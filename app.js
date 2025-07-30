@@ -34,7 +34,7 @@ testDbConnection();
 
 app.get('/products', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM products');
+        const [rows] = await pool.query('SELECT * FROM products WHERE deleted = 0 OR deleted IS NULL');
         res.json(rows);
     } catch (error) {
         console.error('Error fetching products:', error);
@@ -45,7 +45,7 @@ app.get('/products', async (req, res) => {
 app.get('/products/:id', async (req, res) => {
     const productId = req.params.id;
     try {
-        const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [productId]);
+        const [rows] = await pool.query('SELECT * FROM products WHERE id = ? AND (deleted = 0 OR deleted IS NULL)', [productId]);
         if (rows.length > 0) {
             res.json(rows[0]);
         } else {
@@ -61,7 +61,7 @@ app.get('/products/search/:keyword', async (req, res) => {
     const keyword = req.params.keyword;
     const searchTerm = `%${keyword}%`;
     try {
-        const [rows] = await pool.query('SELECT * FROM products WHERE name LIKE ?', [searchTerm]);
+        const [rows] = await pool.query('SELECT * FROM products WHERE name LIKE ? AND (deleted = 0 OR deleted IS NULL)', [searchTerm]);
         res.json(rows);
     } catch (error) {
         console.error(`Error searching products with keyword "${keyword}":`, error);
@@ -87,13 +87,13 @@ app.put('/products/:id', async (req, res) => {
     const productId = req.params.id;
     try {
         const [result] = await pool.query(
-            'UPDATE products SET name = ?, price = ?, discount = ?, review_count = ?, image_url = ? WHERE id = ?',
+            'UPDATE products SET name = ?, price = ?, discount = ?, review_count = ?, image_url = ? WHERE id = ? AND (deleted = 0 OR deleted IS NULL)',
             [name, price, discount, review_count, image_url, productId]
         );
         if (result.affectedRows > 0) {
             res.json({ message: 'Product updated' });
         } else {
-            res.status(404).json({ message: 'Product not found' });
+            res.status(404).json({ message: 'Product not found or deleted' });
         }
     } catch (error) {
         res.status(500).json({ message: 'Error updating product', error: error.message });
@@ -103,14 +103,28 @@ app.put('/products/:id', async (req, res) => {
 app.delete('/products/:id', async (req, res) => {
     const productId = req.params.id;
     try {
-        const [result] = await pool.query('DELETE FROM products WHERE id = ?', [productId]);
+        const [result] = await pool.query('UPDATE products SET deleted = 1 WHERE id = ?', [productId]);
         if (result.affectedRows > 0) {
-            res.json({ message: 'Product deleted' });
+            res.json({ message: 'Product soft deleted' });
         } else {
             res.status(404).json({ message: 'Product not found' });
         }
     } catch (error) {
         res.status(500).json({ message: 'Error deleting product', error: error.message });
+    }
+});
+
+app.patch('/products/:id/restore', async (req, res) => {
+    const productId = req.params.id;
+    try {
+        const [result] = await pool.query('UPDATE products SET deleted = 0 WHERE id = ?', [productId]);
+        if (result.affectedRows > 0) {
+            res.json({ message: 'Product restored' });
+        } else {
+            res.status(404).json({ message: 'Product not found or not deleted' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: 'Error restoring product', error: error.message });
     }
 });
 
